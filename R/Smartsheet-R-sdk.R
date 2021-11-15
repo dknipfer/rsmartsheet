@@ -842,3 +842,57 @@ colorize_sheet<-function(sheet_name, clean_hex_col=TRUE, batch_size=5000){
     stop("ERROR replace_sheet_with_csv: was changed during the operation - aborting!")
   }
 }
+  
+
+  
+  #' Get Sheet to Tibble
+#'
+#' @description With provided sheet name, will populate a tibble with sheet data rather passing it to CSV or other
+#'
+#' @param sheet_name the target Smartsheet's exact sheet name
+#'
+#' @return returns a tibble
+#' @export
+#'
+#' @import magrittr
+#'
+#' @examples
+#' \dontrun{
+#' get_sheet_to_tibble("sheet_name")
+#' }
+  
+ get_sheet_to_tibble <- function(sheet_name){
+    
+   check_smartsheet_api_key()
+    
+   id <- sheet_name_to_id(sheet_name)
+    
+   r <- httr::GET(paste0("https://api.smartsheet.com/2.0/sheets/",id),
+                  httr::add_headers('Authorization' = paste('Bearer',
+                                                            pkg.globals$api_key, 
+                                                            sep = ' ')))
+    
+   r_json <- fromJSON(content(r, "text"), flatten = TRUE)
+    
+   columns <- tibble::tibble("title" = r_json$columns[["title"]], "id" = r_json$columns[["id"]])
+   rows <- tibble::tibble("row_number" = r_json$rows[["rowNumber"]], "id" = r_json$rows[["id"]])
+    
+   cells <- purrr::map_df(rows$row_number, function(.x) {
+        
+       return(tibble::tibble("column_id" = r_json[["rows"]][["cells"]][[.x]][["columnId"]],
+                             "value" = r_json[["rows"]][["cells"]][[.x]][["value"]]) %>%
+                  mutate(row_number = .x))
+       })
+    
+   sheet <- cells %>% 
+      dplyr::left_join(columns, by = c("column_id" = "id")) %>% 
+       dplyr::select(-column_id) %>% 
+       tidyr::pivot_wider(names_from = title, values_from = value) %>% 
+       tibble::as_tibble()
+    
+    
+   return(sheet)
+    
+}
+  
+  
